@@ -25,7 +25,7 @@ Stars are from GitHub as of 2026-01-14.
 | [Codex](https://github.com/openai/codex) | [codex-dotfile-setup.md](codex-dotfile-setup.md)<br>[codex-architecture-breakdown.md](codex-architecture-breakdown.md)<br>[projects/codex/README.md](projects/codex/README.md) | 56.1k |
 | [Cline](https://github.com/cline/cline) | [cline-architecture.md](cline-architecture.md)<br>[projects/cline/README.md](projects/cline/README.md) | 56.9k |
 | [OpenHands](https://github.com/OpenHands/OpenHands) | [openhands-architecture.md](openhands-architecture.md)<br>[projects/openhands/README.md](projects/openhands/README.md) | 66.6k |
-| [Claude Code Open](https://github.com/kill136/claude-code-open) | [claude-code-open-architecture.md](claude-code-open-architecture.md) | 66 |
+| [Claude Code Open](https://github.com/kill136/claude-code-open) | [claude-code-open-architecture.md](claude-code-open-architecture.md)<br>[projects/claude-code-open/README.md](projects/claude-code-open/README.md) | 66 |
 
 ## Docs in this repo
 
@@ -44,3 +44,4 @@ Stars are from GitHub as of 2026-01-14.
 - `projects/cline/README.md`
 - `projects/openhands/README.md`
 - `projects/eigent/README.md`
+- `projects/claude-code-open/README.md`
