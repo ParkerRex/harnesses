@@ -31,7 +31,7 @@ flowchart LR
     ExtTools[Discovered tools/prompts/resources]
   end
 
-  subgraph Storage[Local storage (~/.gemini + project temp)]
+  subgraph Storage["Local storage (~/.gemini + project temp)"]
     Sessions[Session JSON + summaries]
     Settings[settings.json + policies]
     Memory[GEMINI.md + memory]
