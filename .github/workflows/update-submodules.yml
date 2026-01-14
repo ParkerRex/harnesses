@@ -63,7 +63,7 @@ jobs:
           CHANGED_MANUAL=""
           CHANGED_LEGACY=""
 
-          for submodule in codex eigent gemini-cli opencode; do
+          for submodule in codex eigent gemini-cli opencode cline openhands claude-code-open; do
             if [ -d "$submodule" ]; then
               # Get last doc update time (or epoch if no doc exists)
               DOC_DIR="projects/$submodule"
