@@ -9,13 +9,13 @@ Gemini CLI is a local-first terminal agent made of a CLI UI package and a Core r
 flowchart LR
   U[User] --> CLI
 
-  subgraph CLI[CLI package (Ink UI + non-interactive)]
+  subgraph CLI["CLI package (Ink UI + non-interactive)"]
     CLIInput[Input + commands]
     CLIStream[Stream renderer]
     CLITools[Tool confirmations + output]
   end
 
-  subgraph Core[@google/gemini-cli-core]
+  subgraph Core["@google/gemini-cli-core"]
     Client[GeminiClient]
     Chat[GeminiChat]
     Turn[Turn event loop]
