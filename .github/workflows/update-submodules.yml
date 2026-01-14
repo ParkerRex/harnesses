@@ -1,16 +1,31 @@
-name: Update submodules
+name: Update submodules & docs
 
 on:
   schedule:
-    - cron: "0 7 * * *" # daily at 07:00 UTC
+    - cron: "0 7 */3 * *" # every 3 days at 07:00 UTC
   workflow_dispatch:
+    inputs:
+      force_docs:
+        description: "Force doc regeneration even without significant changes"
+        type: boolean
+        default: false
+      min_commits:
+        description: "Minimum commits to trigger doc update (default: 5)"
+        type: number
+        default: 5
 
 permissions:
   contents: write
+  pull-requests: write
+  id-token: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    outputs:
+      submodules_updated: ${{ steps.commit-submodules.outputs.updated }}
+      docs_needed: ${{ steps.check-doc-changes.outputs.needs_update }}
+      changed_submodules: ${{ steps.check-doc-changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +37,8 @@ jobs:
           git submodule update --remote --recursive
           git status --porcelain
 
-      - name: Commit updates if needed
+      - name: Commit submodule updates if needed
+        id: commit-submodules
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "submodule-bot"
@@ -30,6 +46,105 @@ jobs:
             git add .
             git commit -m "chore: update submodules"
             git push
+            echo "updated=true" >> $GITHUB_OUTPUT
           else
-            echo "No updates"
+            echo "No submodule updates"
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for significant changes needing doc updates
+        id: check-doc-changes
+        run: |
+          MIN_COMMITS=${{ inputs.min_commits || 5 }}
+          FORCE=${{ inputs.force_docs || false }}
+          CHANGED_SUBMODULES=""
+
+          for submodule in codex eigent gemini-cli opencode; do
+            if [ -d "$submodule" ]; then
+              # Get last doc update time (or epoch if no doc exists)
+              DOC_FILE="${submodule}-architecture.md"
+              if [ -f "$DOC_FILE" ]; then
+                LAST_DOC_UPDATE=$(git log -1 --format=%ct -- "$DOC_FILE" 2>/dev/null || echo "0")
+              else
+                LAST_DOC_UPDATE=0
+                echo "No existing doc for $submodule - will generate"
+              fi
+
+              # Count commits in submodule since last doc update
+              cd "$submodule"
+              if [ "$LAST_DOC_UPDATE" -eq 0 ]; then
+                COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "999")
+              else
+                COMMIT_COUNT=$(git rev-list --count --since="@$LAST_DOC_UPDATE" HEAD 2>/dev/null || echo "0")
+              fi
+              cd ..
+
+              echo "$submodule: $COMMIT_COUNT commits since last doc update"
+
+              if [ "$FORCE" = "true" ] || [ "$COMMIT_COUNT" -ge "$MIN_COMMITS" ]; then
+                if [ -n "$CHANGED_SUBMODULES" ]; then
+                  CHANGED_SUBMODULES="$CHANGED_SUBMODULES,$submodule"
+                else
+                  CHANGED_SUBMODULES="$submodule"
+                fi
+              fi
+            fi
+          done
+
+          if [ -n "$CHANGED_SUBMODULES" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "changed=$CHANGED_SUBMODULES" >> $GITHUB_OUTPUT
+            echo "Will update docs for: $CHANGED_SUBMODULES"
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "changed=" >> $GITHUB_OUTPUT
+            echo "No significant changes - skipping doc generation"
+          fi
+
+  generate-docs:
+    needs: update
+    if: needs.update.outputs.docs_needed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          ref: main # Get latest after submodule update
+
+      - name: Pull latest changes
+        run: git pull origin main
+
+      - name: Generate architecture docs
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            The following submodules have significant updates and need their architecture docs regenerated: ${{ needs.update.outputs.changed_submodules }}
+
+            For each submodule listed above:
+            1. Read the doc-gen prompt template from .prompts/doc-gen.md
+            2. Analyze the submodule directory thoroughly
+            3. Generate or update the {submodule-name}-architecture.md file in the repo root
+            4. If a doc already exists, preserve accurate content and update changed sections
+
+            Focus on the agentic patterns: sessions, tools, context management, orchestration.
+            Include mermaid diagrams for system maps, message flows, and tool lifecycles.
+          allowed_tools: "Bash(git log:*),Bash(git diff:*),Bash(ls:*),Bash(find:*),Read,Write,Edit,Glob,Grep"
+
+      - name: Commit and push doc updates
+        run: |
+          if [ -n "$(git status --porcelain -- '*-architecture.md')" ]; then
+            git config user.name "doc-bot"
+            git config user.email "doc-bot@users.noreply.github.com"
+            git add *-architecture.md
+            git commit -m "docs: auto-update architecture docs
+
+            Updated docs for: ${{ needs.update.outputs.changed_submodules }}
+
+            Generated by Claude Code from .prompts/doc-gen.md template"
+            git push
+            echo "✅ Architecture docs updated and pushed"
+          else
+            echo "No doc changes to commit"
           fi
