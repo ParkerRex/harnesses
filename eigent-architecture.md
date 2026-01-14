@@ -1,71 +1,70 @@
 # Eigent Architecture - Onboarding Doc
 
-## Eigent deep-dive (what they actually do)
+> **Purpose:** This document explains how Eigent is scaffolded end‑to‑end (UI → backend → tools → persistence). It is meant to onboard engineers building agentic systems with sessions, tool orchestration, model selection, and context handling.
 
-- Agentic orchestration: pre-triage with a "question_confirm" agent -> simple answers bypass workforce; complex tasks
-  spin up Workforce with coordinator + task planner + worker nodes, then decompose + assign subtasks, stream
-  decomposition, and run tasks in parallel. Code: backend/app/service/chat_service.py, backend/app/utils/workforce.py,
-  backend/app/utils/single_agent_worker.py.
-- Fluid handoff + tracking: assigns each agent a stable agent_id, maps CAMEL node_id -> agent_id for UI, emits
-  create_agent/activate_agent/deactivate_agent/assign_task events, and uses process_task_id to tag tool calls by
-  subtask. Code: backend/app/utils/workforce.py, backend/app/utils/agent.py, backend/app/service/task.py, backend/app/utils/listen/toolkit_listen.py.
-- Tool mapping: fixed toolkit bundles per built-in agent + dynamic tool lists for custom workers; MCP tools loaded on
-  demand and merged into tools list; tool events are emitted for UI/logging with truncated args/results. Code:
-  backend/app/utils/agent.py, backend/app/utils/toolkit/*, backend/app/utils/listen/toolkit_listen.py.
-- Model ids + routing: UI selects model_platform + model_type + api_url/key; backend uses CAMEL ModelFactory per
-  request, with extra params and stream config for planner. Code: backend/app/utils/agent.py, src/store/chatStore.ts,
-  backend/app/model/chat.py.
-- Context management: in-memory TaskLock.conversation_history per project, append task results + generated files;
-  reuse that to build coordinator context only; char-limit guard (100k) emits context_too_long; summaries generated
-  for tasks/subtasks; multi-turn preserves history and last result. Code: backend/app/service/task.py, backend/app/service/chat_service.py.
-- User/session/thread/message handling: "project_id" is the long-lived thread; "task_id" is the run. TaskLock keyed by
-  project; SSE stream drives UI. Persisted records: ChatHistory (per run), ChatStep (event log for playback),
-  ChatSnapshot (browser screenshots). Code: backend/app/controller/chat_controller.py, backend/app/utils/server/sync_step.py, server/app/model/chat/*, server/app/controller/chat/*, src/store/chatStore.ts.
-- Session/tool state: per-user env path via thread-local env loader; browser toolkit uses session IDs + pooling; MCP
-  auth dir is shared to avoid re-auth. Code: backend/app/component/environment.py, backend/app/utils/toolkit/hybrid_browser_toolkit.py, backend/app/utils/agent.py.
+---
 
 ## TL;DR
 
-Eigent is a desktop shell that runs a local FastAPI AI runtime. The runtime triages each request, either answering
-directly or spinning up a multi-agent workforce, and streams all step events to the UI. Tool calls and agent
-lifecycles are fully instrumented so the UI can render live status, while a separate server persists history and
-event logs for replay/sharing.
+Eigent is a desktop app (Electron + React) that launches a local FastAPI AI runtime (CAMEL‑based) and optionally syncs events to a server for persistence/replay/sharing. Each user request becomes a task within a long‑lived project session. The backend streams step events via SSE to the UI, which renders tasks, agents, and tool logs. Tool calls are instrumented for visibility and tied back to subtasks with `process_task_id`.
 
-Scope: desktop app + local AI runtime + optional cloud/local persistence. Focus on sessions, threads, tool calls, model selection, context window.
+---
 
 ## System Map
 
-- Renderer: Vite + React + Zustand. UI, state, SSE client. Core: `src/`.
-- Electron main: app shell, backend process, MCP config, webviews. Core: `electron/`.
-- Backend (AI runtime): FastAPI + CAMEL workforce, SSE stream, tools. Core: `backend/`.
-- Server (persistence/identity): FastAPI + SQLModel for history, steps, snapshots, share. Core: `server/`.
-- Docs: concept model. Core: `docs/core/`.
+- **Renderer**: Vite + React + Zustand. UI, state, SSE client. Core: `src/`
+- **Electron main**: Desktop shell, spawns backend, manages ports, MCP config. Core: `electron/`
+- **Backend (AI runtime)**: FastAPI + CAMEL workforce, SSE stream, tools. Core: `backend/`
+- **Server (optional)**: FastAPI + SQLModel for history, steps, snapshots, share. Core: `server/`
+- **Docs**: Concept model. Core: `docs/core/`
 
 ```mermaid
 flowchart LR
-  UI["Renderer (React/Zustand)\nsrc/"] -->|POST /chat SSE| BE["AI Backend (FastAPI+CAMEL)\nbackend/"]
+  subgraph Desktop
+    UI["Renderer (React/Zustand)\nsrc/"]
+    EM["Electron main\nelectron/main"]
+  end
+  EM -->|spawn uvicorn| BE["AI Backend (FastAPI+CAMEL)\nbackend/"]
+  UI -->|POST /chat SSE| BE
   BE -->|SSE steps| UI
-  BE -->|sync_step -> POST /chat/steps| SV["Server (FastAPI+DB)\nserver/"]
-  UI -->|/api/* proxy| SV
-  UI <-->|IPC| EM["Electron main\nelectron/main"]
-  EM -->|spawn uvicorn| BE
-  EM -->|MCP config| MCP["~/.eigent/mcp.json"]
+  BE -->|sync_step POST /chat/steps| SV["Server (FastAPI+DB)\nserver/"]
+  SV --> DB[(SQL Database)]
+  EM -->|read/write| MCP["~/.eigent/mcp.json"]
+  BE --> TK["Toolkits (Python)\nbackend/app/utils/toolkit/*"]
+  TK --> WB["Browser WS server (TS)\nHybridBrowserToolkit"]
 ```
 
-## Sessions, Threads, Tasks: Mental Model
+---
 
-- Session = project. Frontend: project store. Backend: TaskLock keyed by `project_id`. Server: ChatHistory grouped by `project_id`.
-- Thread = chat store per project (multiple allowed). Each chat store = one UI timeline of tasks. Frontend only.
-- Task = unit of work per user question. `task_id` changes per round, tied to `project_id`.
-- Messages = per task. UI stores message list; backend streams steps; server stores steps for replay/share.
+## Runtime Boot + Environment
 
-Key files:
-- `src/store/projectStore.ts` — project/session; multiple chat stores.
-- `src/store/chatStore.ts` — tasks + messages per chat store.
-- `backend/app/service/task.py` — TaskLock, queue, conversation history.
-- `server/app/model/chat/chat_history.py` — project/task persistence.
+Electron launches the backend process, selects a port, and wires environment variables used by toolkits and models.
 
-## Project -> ChatStore -> Task -> Messages
+**Flow**
+1. Electron finds/creates a port (kills stale processes if needed).
+2. Electron spawns FastAPI (`uv run uvicorn main:api`).
+3. Electron sets env vars: `SERVER_URL`, npm cache, venv, etc.
+4. Backend loads global `~/.eigent/.env` and per‑user `.env` (thread‑local).
+
+**Key files**
+- `electron/main/init.ts`
+- `backend/app/component/environment.py`
+- `backend/app/controller/chat_controller.py`
+
+---
+
+## Sessions, Threads, Tasks (Mental Model)
+
+- **Session = project**: long‑lived thread ID (`project_id`).
+- **Thread**: UI chat store for a project (frontend only).
+- **Task**: one run of a user request (`task_id`).
+- **Message**: UI message list per task.
+
+**Where it lives**
+- `src/store/projectStore.ts`
+- `src/store/chatStore.ts`
+- `backend/app/service/task.py`
+- `server/app/model/chat/chat_history.py`
 
 ```mermaid
 flowchart TD
@@ -77,13 +76,9 @@ flowchart TD
   T1 --> M2[TaskInfo / Subtasks]
 ```
 
-## End-to-End Message Flow (SSE)
+---
 
-1) User sends message.
-2) UI selects model/provider + workers.
-3) UI POSTs `/chat` to backend; opens SSE stream.
-4) Backend enqueues ActionImproveData; `step_solve` emits events.
-5) UI maps events to task + agents + logs.
+## End‑to‑End Message Flow (SSE)
 
 ```mermaid
 sequenceDiagram
@@ -103,28 +98,38 @@ sequenceDiagram
   UI->>UI: update task state, messages, tool logs
 ```
 
+---
+
 ## SSE Event Protocol
 
 - Event format: `{"step": "...", "data": {...}}` in `backend/app/model/chat.py`.
 - Action enum defines canonical steps: `backend/app/service/task.py`.
-- Frontend mapping: `src/store/chatStore.ts` handles each step.
+- Frontend mapping: `src/store/chatStore.ts`.
 
-Common steps (UI-visible):
-- `confirmed` — task accepted, used to create new chat store in multi-turn.
-- `decompose_text` — streaming decomposition text for "task split" UI.
-- `to_sub_tasks` — structured subtask tree + summary.
-- `assign_task`, `activate_agent`, `deactivate_agent` — workforce live status.
-- `activate_toolkit`, `deactivate_toolkit` — tool call start/finish.
-- `terminal`, `write_file` — terminal output, file artifacts.
-- `ask` — human-in-loop question.
-- `wait_confirm` — direct answer for simple queries.
-- `end`, `error`, `context_too_long`, `budget_not_enough`.
+Common steps:
+- `confirmed` — task accepted
+- `decompose_text` — streaming decomposition text
+- `to_sub_tasks` — structured subtask tree + summary
+- `assign_task`, `activate_agent`, `deactivate_agent`
+- `activate_toolkit`, `deactivate_toolkit`
+- `terminal`, `write_file`
+- `ask` — human‑in‑loop question
+- `wait_confirm` — direct answer for simple queries
+- `end`, `error`, `context_too_long`, `budget_not_enough`
+
+---
 
 ## Workforce Orchestration
 
-- Core class: `backend/app/utils/workforce.py` extends CAMEL Workforce.
-- Subtask decomposition is explicit: `eigent_make_sub_tasks` then `eigent_start`.
-- Worker execution: `backend/app/utils/single_agent_worker.py` adds streaming + memory transfer.
+Eigent wraps CAMEL Workforce with:
+- Streaming decomposition text and structured subtask tree
+- Agent lifecycle events and task assignment events
+- Failure handling strategies (`retry`, `replan`)
+
+**Key files**
+- `backend/app/utils/workforce.py`
+- `backend/app/utils/single_agent_worker.py`
+- `backend/app/utils/agent.py`
 
 ```mermaid
 flowchart LR
@@ -137,6 +142,8 @@ flowchart LR
   TR --> WF
   WF --> UI[status + logs]
 ```
+
+---
 
 ## Swimlane: Task Execution + Tool Call Mapping
 
@@ -165,82 +172,175 @@ flowchart LR
   BE2 --> UI4
 ```
 
+---
+
 ## Tool Call Mapping (What, Where, Why)
 
-- Instrumentation point 1: `backend/app/utils/agent.py` overrides `_execute_tool` / `_aexecute_tool`.
-  - Emits `activate_toolkit` + `deactivate_toolkit` with args/results.
-  - Preserves ContextVar `process_task_id` via `set_process_task` in `backend/app/service/task.py`.
-- Instrumentation point 2: `backend/app/utils/listen/toolkit_listen.py`
-  - Decorator `listen_toolkit` wraps toolkit methods.
-  - Sends same events; resolves `process_task_id` via ContextVar fallback.
-- UI mapping: `src/store/chatStore.ts`
-  - `resolveProcessTaskIdForToolkitEvent` assigns tool events to correct subtask.
-  - Updates agent logs and task status.
+Two instrumentation layers ensure tool calls are visible in UI:
 
-## Model Selection + System Prompting
+1) **Agent‑level**: `ListenChatAgent._execute_tool` and `_aexecute_tool` emit `activate_toolkit` / `deactivate_toolkit` with args and results. (`backend/app/utils/agent.py`)
 
-- Frontend model routing: `src/store/chatStore.ts`
-  - Reads `modelType` from auth store.
-  - `custom/local`: `GET /api/providers?prefer=true` for provider config.
-  - `cloud`: `GET /api/user/key` for cloud key + `cloud_model_type`.
-  - Sends `model_platform`, `model_type`, `api_url`, `extra_params` in `/chat` body.
-- Backend model instantiation: `backend/app/utils/agent.py` `agent_model()`
-  - `ModelFactory.create(model_platform, model_type, api_key, url, extra_params)`.
-- System prompts live in `backend/app/utils/agent.py`
-  - `developer_agent`, `search_agent`, `document_agent`, `multi_modal_agent`.
-  - `question_confirm_agent` decides simple vs complex.
-  - `task_summary_agent` generates short task summary for UI.
+2) **Toolkit‑level**: `@listen_toolkit` decorator wraps toolkit methods, also emitting events and binding to `process_task_id` via ContextVar. (`backend/app/utils/listen/toolkit_listen.py`)
 
-## Context Window + Compaction
+UI resolves tool events to the correct subtask:
+- `resolveProcessTaskIdForToolkitEvent` in `src/store/chatStore.ts`.
 
-- Context store: `TaskLock.conversation_history` in `backend/app/service/task.py`.
-- Context build: `build_conversation_context` in `backend/app/service/chat_service.py`.
-  - Includes previous task content/results and generated file list.
-- Hard limit: `check_conversation_history_length` in `backend/app/service/chat_service.py` (100,000 chars).
-  - Emits `context_too_long` SSE.
-  - UI blocks input: `src/store/chatStore.ts` sets `isContextExceeded`; `src/components/ChatBox/index.tsx` disables input.
-- Compaction: no automatic shrink. Only summary for UI, not rolling compression.
-  - `summary_task` in `backend/app/service/chat_service.py` used for UI task summary.
-  - `prune_tool_calls_from_memory=True` used for some agents in `backend/app/utils/agent.py`.
-  - Workflow memory optional: `enable_workflow_memory` in `backend/app/utils/single_agent_worker.py`.
-
-## Replay + Share
-
-- SSE step storage: `server/app/controller/chat/step_controller.py` + `server/app/model/chat/chat_step.py`.
-- Sync bridge: `backend/app/utils/server/sync_step.py` sends steps to server when `SERVER_URL` set.
-- Replay: `GET /chat/steps/playback/{task_id}`; used by UI `chatStore.replay`.
-- Share: tokens + playback in `server/app/controller/chat/share_controller.py`.
-- Snapshots: `server/app/controller/chat/snapshot_controller.py` stores browser screenshots for search agent.
+---
 
 ## How to Build a New Tool (Canonical Path)
 
 1) Implement toolkit class in `backend/app/utils/toolkit/`.
-2) Decorate tool methods with `listen_toolkit` for workflow logging.
+2) Decorate tool methods with `listen_toolkit` or use `auto_listen_toolkit`.
 3) Register in `get_toolkits()` map in `backend/app/utils/agent.py`.
 4) Expose in UI tool picker if needed: `src/components/AddWorker/ToolSelect.tsx`.
-5) For MCP tools: define config in `electron/main/utils/mcpConfig.ts` or via UI, stored in `~/.eigent/mcp.json`.
-6) For server-side persistence or sharing, ensure step sync is enabled via `SERVER_URL`.
+5) For MCP tools: config is stored in `~/.eigent/mcp.json` (see `electron/main/utils/mcpConfig.ts`).
+
+---
+
+## Model Selection + System Prompting
+
+- UI picks **modelType** (`cloud` | `local` | `custom`) in `src/store/authStore.ts`.
+- For cloud, UI infers platform from model name (`gpt`, `claude`, `gemini`).
+- Backend constructs models with `ModelFactory.create(...)` in `backend/app/utils/agent.py`.
+- System prompts for each agent live in `backend/app/utils/agent.py`.
+
+```mermaid
+flowchart TD
+  A[UI modelType] -->|cloud| B[cloud_model_type]
+  A -->|local/custom| C[GET /api/providers]
+  B --> D[platform inferred from name]
+  C --> E[provider_name + model_type]
+  D --> F[POST /chat with model_platform/model_type]
+  E --> F
+  F --> G[ModelFactory.create]
+```
+
+---
+
+## Context Window + Compaction
+
+- Context is stored per project in memory: `TaskLock.conversation_history`.
+- Context building includes previous task content, results, and generated files.
+- Hard limit is **100,000 chars**. Exceeding triggers `context_too_long` SSE and UI disables input.
+- **No automatic compaction**. Only task summaries are generated for UI and multi‑subtask results.
+
+```mermaid
+flowchart LR
+  U[New user message] --> Q[TaskLock queue]
+  Q --> H[conversation_history append]
+  H --> C[build_conversation_context]
+  C --> QC[question_confirm_agent]
+  QC --> WF[Workforce]
+  WF --> R[task results]
+  R --> H
+  H --> L[check length 100k chars]
+  L -->|exceeded| E[context_too_long SSE]
+```
+
+**Key files**
+- `backend/app/service/chat_service.py`
+- `backend/app/service/task.py`
+- `backend/app/model/chat.py`
+- `src/components/ChatBox/index.tsx`
+
+---
+
+## Memory (Workflow vs Conversation)
+
+- **Conversation history** lives in `TaskLock.conversation_history` (in‑memory only).
+- **Workflow memory** exists in CAMEL agent memory and can be transferred from worker → accumulator if `enable_workflow_memory` is true. Default is false.
+- `share_memory` exists in Workforce but defaults false.
+
+Key files:
+- `backend/app/utils/single_agent_worker.py`
+- `backend/app/utils/workforce.py`
+- `backend/app/utils/agent.py`
+
+---
+
+## Failure Modes + Recovery
+
+- **SSE timeout**: 10 minutes idle closes stream silently (`backend/app/controller/chat_controller.py`).
+- **Budget exceeded**: emits `budget_not_enough` (`backend/app/utils/agent.py`).
+- **Invalid/empty task**: fails during decomposition (`backend/app/utils/workforce.py`).
+- **Tool failure**: caught and returned as tool error (`backend/app/utils/agent.py`).
+- **Context too long**: emits `context_too_long`, UI disables input (`backend/app/service/chat_service.py`).
+
+```mermaid
+stateDiagram-v2
+  [*] --> Running
+  Running --> Timeout: SSE idle > 10m
+  Running --> BudgetError: ModelProcessingError
+  Running --> ToolError: Tool exception
+  Running --> ContextTooLong: >100k chars
+  Running --> Stopped: user stop
+  Timeout --> [*]
+  BudgetError --> [*]
+  ToolError --> Running
+  ContextTooLong --> [*]
+  Stopped --> [*]
+```
+
+---
+
+## Persistence + Replay + Share (Server)
+
+Server stores chat metadata and step events. Replay and share are SSE‑driven.
+
+- **ChatHistory**: task metadata (`server/app/model/chat/chat_history.py`).
+- **ChatStep**: event log for playback (`server/app/model/chat/chat_step.py`).
+- **ChatSnapshot**: browser screenshot storage (`server/app/model/chat/chat_snpshot.py`).
+- **Share tokens**: generated + verified in `server/app/model/chat/chat_share.py`.
+
+---
+
+## MCP Configuration + Auth
+
+- MCP config file: `~/.eigent/mcp.json`.
+- Supports `command + args` or `url`.
+- Args are normalized to arrays (strings are parsed or split).
+- Tool install/uninstall endpoints live in `backend/app/controller/tool_controller.py`.
+- OAuth flow is tracked by `backend/app/utils/oauth_state_manager.py`.
+
+---
 
 ## Key Files to Read First
 
-- `src/store/chatStore.ts` — SSE handling, message routing, tool log mapping.
-- `src/store/projectStore.ts` — session/project + chat stores.
-- `src/api/http.ts` — local backend vs proxy server routing.
-- `backend/app/controller/chat_controller.py` — `/chat` SSE endpoints + lifecycle.
-- `backend/app/service/chat_service.py` — step loop, question_confirm, context handling.
-- `backend/app/service/task.py` — Action enum, TaskLock, queue, ContextVar.
-- `backend/app/utils/agent.py` — model selection, system prompts, tool plumbing.
-- `backend/app/utils/workforce.py` — decomposition + workforce runtime.
-- `backend/app/utils/listen/toolkit_listen.py` — tool event instrumentation.
-- `backend/app/utils/server/sync_step.py` — step sync to server.
-- `server/app/controller/chat/*.py` — history, steps, snapshots, share.
-- `electron/main/init.ts` — spawn backend, ports, env wiring.
-- `electron/main/utils/mcpConfig.ts` — MCP config file layout.
-- `docs/core/*.md` — concept language for onboarding.
+- `eigent-architecture.md`
+- `backend/app/controller/chat_controller.py`
+- `backend/app/service/chat_service.py`
+- `backend/app/service/task.py`
+- `backend/app/utils/agent.py`
+- `backend/app/utils/workforce.py`
+- `backend/app/utils/listen/toolkit_listen.py`
+- `backend/app/utils/toolkit/hybrid_browser_toolkit.py`
+- `backend/app/utils/toolkit/terminal_toolkit.py`
+- `src/store/chatStore.ts`
+- `src/store/projectStore.ts`
+- `src/api/http.ts`
+- `electron/main/init.ts`
+- `electron/main/utils/mcpConfig.ts`
+- `server/app/controller/chat/step_controller.py`
 
-## Quick "What Lives Where"
+---
 
-- UI/State: `src/`
+## Current TODOs to Keep in Mind
+
+These are in code and affect how the system is expected to evolve:
+
+- `src/store/chatStore.ts` — historyId migration TODOs.
+- `src/store/chatStore.ts` — attaches don’t reach backend when Improve API is called.
+- `src/store/projectStore.ts` — historyId removal TODO.
+- `src/components/ChatBox/BottomBox/index.tsx` — queued box feature disabled.
+- `src/components/SearchHistoryDialog.tsx` — delete/share TODOs.
+- `electron/main/index.ts` — TODO for dynamic provider selection.
+- `src/store/chatStore.ts` — endpoint rename TODO (project_id).
+
+---
+
+## Appendix: Quick “What Lives Where”
+
+- UI/state: `src/`
 - Electron shell/IPC: `electron/`
 - AI runtime + tools: `backend/`
 - Persistence + sharing: `server/`

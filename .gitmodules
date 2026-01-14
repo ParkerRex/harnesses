@@ -14,3 +14,7 @@
 	path = codex
 	url = https://github.com/openai/codex.git
 	branch = main
+[submodule "openhands"]
+	path = openhands
+	url = https://github.com/OpenHands/OpenHands.git
+	branch = main
