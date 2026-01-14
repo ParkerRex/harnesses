@@ -13,7 +13,7 @@ Stars are from GitHub as of 2026-01-14.
 | [Eigent](https://github.com/eigent-ai/eigent) | [eigent-architecture.md](eigent-architecture.md) | 4.4k |
 | [OpenCode](https://github.com/anomalyco/opencode) | [opencode-architecture.md](opencode-architecture.md) | 68.6k |
 | [Codex](https://github.com/openai/codex) | [codex-dotfile-setup.md](codex-dotfile-setup.md)<br>[codex-architecture-breakdown.md](codex-architecture-breakdown.md) | 56.1k |
-| [OpenHands](https://github.com/OpenHands/OpenHands) | None | 66.6k |
+| [OpenHands](https://github.com/OpenHands/OpenHands) | [openhands-architecture.md](openhands-architecture.md) | 66.6k |
 
 ## Docs in this repo
 
@@ -21,4 +21,5 @@ Stars are from GitHub as of 2026-01-14.
 - `codex-dotfile-setup.md`
 - `codex-architecture-breakdown.md`
 - `eigent-architecture.md`
+- `openhands-architecture.md`
 - `opencode-architecture.md`
