@@ -16,7 +16,9 @@ sharing. Paths below are relative to the `src/coding-agents/eigent/` submodule.
 - Persistence + sharing: `subsystems/persistence-sharing.md`
 - Safety + failure modes: `subsystems/safety-failure-modes.md`
 - Reference map: `reference/directory-map.md`
+- Repo file tree: `reference/file-tree.md`
 - Key files: `reference/key-files.md`
 - Mental model: `reference/mental-model.md`
+- Project snapshot: `reference/project-snapshot.md`
 - Comparison notes: `comparison.md`
 - Changelogs: `CHANGELOG-upstream.md`, `CHANGELOG-docs.md`
