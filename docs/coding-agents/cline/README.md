@@ -17,7 +17,9 @@ relative to the `src/coding-agents/cline/` submodule.
 - Safety + failure modes: `subsystems/safety-failure-modes.md`
 - Observability: `subsystems/observability.md`
 - Reference map: `reference/directory-map.md`
+- Repo file tree: `reference/file-tree.md`
 - Key files: `reference/key-files.md`
 - Mental model: `reference/mental-model.md`
+- Project snapshot: `reference/project-snapshot.md`
 - Comparison notes: `comparison.md`
 - Changelogs: `CHANGELOG-upstream.md`, `CHANGELOG-docs.md`
