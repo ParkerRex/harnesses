@@ -1,8 +1,8 @@
 flowchart TB
-  A[ModelInfo: base_instructions] --> P[Prompt]
-  B[Developer instructions (config)] --> P
-  C[User instructions: AGENTS.md + config] --> P
-  D[Skills injections] --> P
-  E[ContextManager history] --> P
-  F[Tool specs for this turn] --> P
-  P --> M[Model request]
+  A["ModelInfo: base_instructions"] --> P[Prompt]
+  B["Developer instructions (config)"] --> P
+  C["User instructions: AGENTS.md + config"] --> P
+  D["Skills injections"] --> P
+  E["ContextManager history"] --> P
+  F["Tool specs for this turn"] --> P
+  P --> M["Model request"]

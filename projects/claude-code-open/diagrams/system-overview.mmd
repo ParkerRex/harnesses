@@ -1,32 +1,32 @@
 flowchart LR
   subgraph Client
-    CLI[CLI Entry (Commander)]
-    TUI[Ink UI]
-    Text[Text/Print Mode]
+    CLI["CLI Entry (Commander)"]
+    TUI["Ink UI"]
+    Text["Text/Print Mode"]
   end
 
   subgraph Core
-    Loop[ConversationLoop]
-    Session[Session State + Messages]
-    Prompt[SystemPromptBuilder]
-    Tools[ToolRegistry]
-    Permissions[Permission Manager]
-    Hooks[Hook Runner]
+    Loop["ConversationLoop"]
+    Session["Session State + Messages"]
+    Prompt["SystemPromptBuilder"]
+    Tools["ToolRegistry"]
+    Permissions["Permission Manager"]
+    Hooks["Hook Runner"]
   end
 
   subgraph Storage
-    Sessions[(~/.claude/sessions/*.json)]
-    Summaries[(~/.claude/sessions/summaries)]
-    Memory[(~/.claude/memory + ./.claude/memory)]
-    Telemetry[(~/.claude/telemetry)]
-    ToolOutputs[(~/.claude/tasks)]
+    Sessions[("~/.claude/sessions/*.json")]
+    Summaries[("~/.claude/sessions/summaries")]
+    Memory[("~/.claude/memory + ./.claude/memory")]
+    Telemetry[("~/.claude/telemetry")]
+    ToolOutputs[("~/.claude/tasks")]
   end
 
   subgraph External
-    Anthropic[Anthropic Messages API]
-    OAuth[OAuth Endpoints]
-    MCP[MCP Servers]
-    Web[WebFetch/WebSearch]
+    Anthropic["Anthropic Messages API"]
+    OAuth["OAuth Endpoints"]
+    MCP["MCP Servers"]
+    Web["WebFetch/WebSearch"]
   end
 
   CLI --> Loop
