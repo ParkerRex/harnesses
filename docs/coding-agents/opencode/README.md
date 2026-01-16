@@ -13,6 +13,7 @@ and sharing/sync. Paths below are relative to the `src/coding-agents/opencode/` 
 - Tools and tool state: `subsystems/tools.md`
 - Model selection + prompting: `subsystems/models-prompting.md`
 - Context window + compaction: `subsystems/context-compaction.md`
+- TUI streaming + thinking/todos UI: `subsystems/tui-streaming-ui.md`
 - Persistence + sharing: `subsystems/persistence-sharing.md`
 - Reference map: `reference/directory-map.md`
 - Repo file tree: `reference/file-tree.md`

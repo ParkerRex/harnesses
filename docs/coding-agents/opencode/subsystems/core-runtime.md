@@ -34,3 +34,6 @@ Key files:
 ## Sequence: user -> tool -> response
 
 Diagram: `../diagrams/message-flow.mmd`.
+
+Related: TUI streaming + thinking/todos UI `tui-streaming-ui.md` and
+`../diagrams/tui-streaming-ui.mmd`.

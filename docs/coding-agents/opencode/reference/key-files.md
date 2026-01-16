@@ -12,6 +12,12 @@ Paths are relative to the `src/coding-agents/opencode/` submodule.
 - `packages/opencode/src/session/processor.ts` - stream event handling
 - `packages/opencode/src/session/llm.ts` - LLM stream execution
 - `packages/opencode/src/session/system.ts` - system prompt selection
+- `packages/opencode/src/cli/cmd/tui/worker.ts` - worker event stream + RPC bridge
+- `packages/opencode/src/cli/cmd/tui/thread.ts` - UI thread + worker wiring
+- `packages/opencode/src/cli/cmd/tui/context/sdk.tsx` - SDK event batching + emitter
+- `packages/opencode/src/cli/cmd/tui/context/sync.tsx` - event-to-store sync
+- `packages/opencode/src/cli/cmd/tui/routes/session/index.tsx` - part rendering (thinking, tools, todos)
+- `packages/opencode/src/cli/cmd/tui/component/todo-item.tsx` - todo item glyphs + styles
 - `packages/opencode/src/tool/tool.ts` - tool definition contract
 - `packages/opencode/src/tool/registry.ts` - tool registry
 - `packages/plugin/src/index.ts` - plugin hooks

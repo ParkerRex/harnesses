@@ -1,0 +1,14 @@
+sequenceDiagram
+  participant W as TUI Worker
+  participant RPC as RPC Channel
+  participant SDK as SDK Event Emitter
+  participant Store as Sync Store
+  participant UI as TUI UI
+
+  W->>W: Server.App + SDK client
+  W->>W: sdk.event.subscribe (SSE or in-process)
+  W->>RPC: emit(event)
+  RPC->>SDK: deliver event
+  SDK->>SDK: batch (<=16ms)
+  SDK->>Store: update store
+  Store->>UI: reactive re-render
